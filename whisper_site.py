@@ -1,3 +1,88 @@
+import streamlit as st
+import openai
+import os
+from docx import Document
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.units import cm
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+st.set_page_config(page_title="Whisper Transcripteur", layout="wide")
+
+st.title("🎧 Whisper Transcripteur")
+
+uploaded_file = st.file_uploader("📁 Importer un fichier audio", type=["mp3", "m4a", "wav"])
+
+if uploaded_file:
+    with st.spinner("🧠 Transcription en cours..."):
+        # Enregistre temporairement le fichier audio
+        with open(uploaded_file.name, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        audio_file = open(uploaded_file.name, "rb")
+
+        # Transcription avec Whisper
+        transcript = openai.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+
+        st.success("✅ Transcription terminée !")
+
+        # 🧩 Zone d’édition : l’utilisateur peut relire et modifier
+        edited_text = st.text_area("📝 Votre transcription (modifiable avant téléchargement)", transcript, height=400)
+
+        # 🧾 Téléchargement en DOCX
+        def create_docx(content):
+            doc = Document()
+            doc.add_heading("Transcription", level=1)
+            for paragraph in content.split("\n"):
+                if paragraph.strip():
+                    doc.add_paragraph(paragraph.strip())
+            doc.save("transcription.docx")
+            return "transcription.docx"
+
+        # 🧾 Téléchargement en PDF bien formaté
+        def create_pdf(content):
+            pdf_path = "transcription.pdf"
+            doc = SimpleDocTemplate(pdf_path, pagesize=A4,
+                                    rightMargin=2*cm, leftMargin=2*cm,
+                                    topMargin=2*cm, bottomMargin=2*cm)
+            styles = getSampleStyleSheet()
+            normal = ParagraphStyle(
+                'Normal',
+                parent=styles['Normal'],
+                fontName='Helvetica',
+                fontSize=12,
+                leading=18,
+                spaceAfter=12
+            )
+
+            story = [Paragraph("<b>Transcription</b>", styles['Heading1']), Spacer(1, 12)]
+            for paragraph in content.split("\n"):
+                if paragraph.strip():
+                    story.append(Paragraph(paragraph.strip(), normal))
+                    story.append(Spacer(1, 8))
+
+            doc.build(story)
+            return pdf_path
+
+        # 🧱 Boutons de téléchargement
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📄 Télécharger en DOCX"):
+                docx_file = create_docx(edited_text)
+                with open(docx_file, "rb") as f:
+                    st.download_button("⬇️ Télécharger DOCX", f, file_name="transcription.docx")
+
+        with col2:
+            if st.button("🧾 Télécharger en PDF"):
+                pdf_file = create_pdf(edited_text)
+                with open(pdf_file, "rb") as f:
+                    st.download_button("⬇️ Télécharger PDF", f, file_name="transcription.pdf")
 import os
 import io
 import json
