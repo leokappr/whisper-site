@@ -1,3 +1,97 @@
+import os
+import json
+import streamlit as st
+import openai
+from pathlib import Path
+
+# exports
+from docx import Document
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.units import cm
+
+# pour le bouton copier (JS)
+import streamlit.components.v1 as components
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+st.set_page_config(page_title="Whisper Transcripteur", layout="wide")
+st.title("🎧 Whisper Transcripteur")
+
+uploaded_file = st.file_uploader("📁 Importer un fichier audio", type=["mp3", "m4a", "wav"])
+
+def make_paragraphs(text: str):
+    """
+    Retourne une liste de paragraphes propres :
+    – normalise les retours à la ligne
+    – supprime les lignes vides multiples
+    """
+    # remplace les retours Windows
+    t = text.replace("\r\n", "\n").replace("\r", "\n")
+    # si pas de doubles lignes vides, on coupe à chaque ligne ; sinon on garde les blocs
+    if "\n\n" in t:
+        parts = [p.strip() for p in t.split("\n\n") if p.strip()]
+    else:
+        parts = [p.strip() for p in t.split("\n") if p.strip()]
+    return parts
+
+def create_docx(content: str, out_path: Path):
+    doc = Document()
+    doc.add_heading("Transcription", level=1)
+    for p in make_paragraphs(content):
+        doc.add_paragraph(p)
+    doc.save(out_path)
+
+def create_pdf(content: str, out_path: Path):
+    # PDF propre : marges, interligne, paragraphes
+    doc = SimpleDocTemplate(str(out_path), pagesize=A4,
+                            rightMargin=2*cm, leftMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    normal = ParagraphStyle(
+        'NormalPlus',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=12,
+        leading=18,        # interligne
+        spaceAfter=10      # espace après chaque par.
+    )
+    h1 = styles['Heading1']
+
+    story = [Paragraph("Transcription", h1), Spacer(1, 12)]
+    for p in make_paragraphs(content):
+        # échappe minimalement les chevrons
+        p_html = p.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        story.append(Paragraph(p_html, normal))
+        story.append(Spacer(1, 6))
+
+    doc.build(story)
+
+if uploaded_file:
+    with st.spinner("🧠 Transcription en cours..."):
+        # sauvegarde temporaire
+        tmp_audio = Path(uploaded_file.name)
+        with open(tmp_audio, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        # appel Whisper (transcription brute)
+        with open(tmp_audio, "rb") as af:
+            transcript = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=af,
+                response_format="text"
+            )
+
+    st.success("✅ Transcription terminée !")
+
+    # 📝 zone éditable (tu peux corriger avant export)
+    edited_text = st.text_area("📝 Transcription (modifiable avant téléchargement)", transcript, height=420)
+
+    # 📋 bouton COPIER (presse-papiers)
+    col_copy, col_sp, col_docx, col_pdf = st.columns([1, 0.2, 1, 1])
+    with col_copy:
+        if st.button
 import streamlit as st
 import openai
 import os
